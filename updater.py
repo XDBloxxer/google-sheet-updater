@@ -5,6 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from tradingview_ta import TA_Handler, Interval
 import time
+from apscheduler.schedulers.background import BackgroundScheduler
 
 
 app = Flask(__name__)
