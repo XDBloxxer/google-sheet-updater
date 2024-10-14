@@ -22,6 +22,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install gspread google-auth tradingview-ta APScheduler Flask
+          pip install gspread
+          pip install google-auth
+          pip install tradingview-ta
+          pip install APScheduler
+          pip install Flask
 
       - name: Run the updater script
         env:
