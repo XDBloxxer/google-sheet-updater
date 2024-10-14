@@ -17,8 +17,13 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# Load Google credentials from environment variable
-GOOGLE_CREDENTIALS_JSON = os.getenv('PROJECT_MALAGA_KEY')
+# Load the Google credentials from the environment variable
+GOOGLE_CREDENTIALS_JSON = os.getenv("PROJECT_MALAGA_KEY")
+
+if GOOGLE_CREDENTIALS_JSON is None:
+    raise ValueError("GOOGLE_CREDENTIALS_JSON environment variable is not set.")
+
+# Create credentials from the JSON string
 creds = Credentials.from_service_account_info(json.loads(GOOGLE_CREDENTIALS_JSON), scopes=SCOPE)
 
 # Authorize the Google Sheets client
