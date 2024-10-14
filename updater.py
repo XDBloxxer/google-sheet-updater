@@ -73,7 +73,7 @@ def update_stock_prices():
     tickers = sheet.col_values(1)[2:]  # Starting from the 3rd row
 
     batch_size = 50 # Number of tickers to process at a time
-    total_tickers = len(tickers)a
+    total_tickers = len(tickers)
     stock_data = []
 
     # Process tickers in batches
