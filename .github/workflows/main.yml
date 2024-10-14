@@ -1,35 +1,27 @@
-name: TradingView Scraper
+name: Google Sheet Updater
 
 on:
   push:
     branches:
-      - main  # Trigger when code is pushed to main branch
-  workflow_dispatch:  # Manually trigger the workflow
-  schedule:
-    - cron: '0 */6 * * *'  # Re-trigger every 6 hours (if it times out or finishes)
-
+      - main  # Change this to your main branch name
 
 jobs:
-  run-scraper:
+  update:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.12'  # Use the desired Python version
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install gspread
-        pip install oauth2client
-        pip install tradingview_ta
-        pip install apscheduler
-        pip install Flask
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install gspread google-auth tradingview-ta APScheduler Flask
 
       - name: Run the updater script
         env:
