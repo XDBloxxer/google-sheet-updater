@@ -25,7 +25,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install gspread oauth2client tradingview_ta apscheduler Flask
+        pip install gspread
+        pip install oauth2client
+        pip install tradingview_ta
+        pip install apscheduler
+        pip install Flask
+
+
 
     - name: Run scraper
       env:
