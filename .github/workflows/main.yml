@@ -35,7 +35,6 @@ jobs:
 
     - name: Run scraper
       env:
-        GOOGLE_SHEETS_API_KEY: ${{ secrets.PROJECT_MALAGA_KEY}}
+        GOOGLE_SHEETS_API_KEY: ${{ secrets.PROJECT_MALAGA_KEY }}
       run: |
-        echo "$GOOGLE_SHEETS_API_KEY" > /tmp/service-account.json
         python updater.py
