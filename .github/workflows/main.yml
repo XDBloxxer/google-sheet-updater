@@ -3,7 +3,11 @@ name: TradingView Scraper
 on:
   push:
     branches:
-      - main  # Trigger workflow on code push to main branch
+      - main  # Trigger when code is pushed to main branch
+  workflow_dispatch:  # Manually trigger the workflow
+  schedule:
+    - cron: '0 */6 * * *'  # Re-trigger every 6 hours (if it times out or finishes)
+
 
 jobs:
   run-scraper:
