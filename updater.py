@@ -1,9 +1,11 @@
 import os
 import json
+from flask import Flask, jsonify
 import gspread
 from google.oauth2.service_account import Credentials
 from tradingview_ta import TA_Handler, Interval
 import time
+
 
 app = Flask(__name__)
 
