@@ -18,7 +18,7 @@ SCOPE = [
 ]
 
 # Load the Google credentials from the environment variable
-GOOGLE_CREDENTIALS_JSON = os.getenv("PROJECT_MALAGA_KEY")
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 
 if GOOGLE_CREDENTIALS_JSON is None:
     raise ValueError("GOOGLE_CREDENTIALS_JSON environment variable is not set.")
