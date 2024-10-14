@@ -69,7 +69,7 @@ def get_stock_analysis(ticker, interval):
 # Function to handle "null" values
 def handle_null_value(value):
     if value is None or value == "null":
-        return "null"
+        return "-"
     try:
         # Round the value to two decimal places if it's a number
         return round(float(value), 2)
@@ -95,7 +95,7 @@ def update_stock_prices():
             if ema_analysis is not None:
                 ema_200_5min = handle_null_value(ema_analysis.indicators.get("EMA200", "null"))
             else:
-                ema_200_5min = "null"
+                ema_200_5min = "-"
 
             # Get other indicators with daily interval
             analysis = get_stock_analysis(ticker, Interval.INTERVAL_1_DAY)
@@ -113,56 +113,56 @@ def update_stock_prices():
                 mom = handle_null_value(analysis.indicators.get("Mom", "null"))
 
             else:
-                stoch_rsi_fast = macd_level = macd_signal = williams_r = bbpower = ema_200_daily = bb_upper = bb_lower = open_value = stochk = mom = "null"
+                stoch_rsi_fast = macd_level = macd_signal = williams_r = bbpower = ema_200_daily = bb_upper = bb_lower = open_value = stochk = mom = "-"
 
             # Get EMA 200 with 4-hour and 1-hour intervals
             ema_200_4h_analysis = get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
             if ema_200_4h_analysis is not None:
                 ema_200_4h = handle_null_value(ema_200_4h_analysis.indicators.get("EMA200", "null"))
             else:
-                ema_200_4h = "null"
+                ema_200_4h = "-"
 
             williams_r4hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
             if williams_r4hanalysis is not None:
                 williams_r4h = handle_null_value(williams_r4hanalysis.indicators.get("W.R", "null"))
             else:
-                williams_r4h = "null"
+                williams_r4h = "-"
 
             stochk4hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
             if stochk4hanalysis is not None:
                 stochk4h = handle_null_value(stochk4hanalysis.indicators.get("Stoch.K", "null"))
             else:
-                stochk4h = "null"
+                stochk4h = "-"
 
             ema_200_1h_analysis = get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
             if ema_200_1h_analysis is not None:
                 ema_200_1h = handle_null_value(ema_200_1h_analysis.indicators.get("EMA200", "null"))
             else:
-                ema_200_1h = "null"
+                ema_200_1h = "-"
             
             williams_r1hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
             if williams_r1hanalysis is not None:
                 williams_r1h = handle_null_value(williams_r1hanalysis.indicators.get("W.R", "null"))
             else:
-                williams_r1h = "null"
+                williams_r1h = "-"
 
             stochk1hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
             if stochk1hanalysis is not None:
                 stochk1h = handle_null_value(stochk1hanalysis.indicators.get("Stoch.K", "null"))
             else:
-                stochk1h = "null"
+                stochk1h = "-"
 
             williams_r15manalysis = get_stock_analysis(ticker, Interval.INTERVAL_15_MINUTES)
             if williams_r15manalysis is not None:
                 williams_r15m = handle_null_value(williams_r15manalysis.indicators.get("W.R", "null"))
             else:
-                williams_r15m = "null"
+                williams_r15m = "-"
 
             stochk15minanalysis = get_stock_analysis(ticker, Interval.INTERVAL_15_MINUTES)
             if stochk15minanalysis is not None:
                 stochk15min = handle_null_value(stochk15minanalysis.indicators.get("Stoch.K", "null"))
             else:
-                stochk15min = "null"
+                stochk15min = "-"
 
             # Get Williams and Stoch RSI with 1-week interval
             williams_r_week_analysis = get_stock_analysis(ticker, Interval.INTERVAL_1_WEEK)
@@ -170,7 +170,7 @@ def update_stock_prices():
                 williams_r_week = handle_null_value(williams_r_week_analysis.indicators.get("W.R", "null"))
                 stoch_rsi_fast_1week = handle_null_value(williams_r_week_analysis.indicators.get("Stoch.RSI.K", "null"))
             else:
-                williams_r_week = stoch_rsi_fast_1week = "null"
+                williams_r_week = stoch_rsi_fast_1week = "-"
 
             # Save the results to the list (for API response)
             stock_data.append({
