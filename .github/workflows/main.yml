@@ -31,10 +31,8 @@ jobs:
         pip install apscheduler
         pip install Flask
 
-
-
-    - name: Run scraper
-      env:
+      - name: Run the updater script
+        env:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         run: |
           python updater.py
