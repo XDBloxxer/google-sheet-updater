@@ -57,8 +57,6 @@ def get_stock_analysis(ticker, interval):
             cache[cache_key] = {'data': analysis, 'timestamp': time.time()}
             return analysis
         except Exception as e:
-            # Uncomment the line below if you still want to see error messages in the terminal
-            # print(f"Failed to fetch {ticker} data from {exchange}: {e}")
             continue  # Try the next exchange
     return None  # Return None if both exchanges fail
 
