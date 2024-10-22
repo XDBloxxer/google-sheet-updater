@@ -57,6 +57,8 @@ def get_stock_analysis(ticker, interval):
             cache[cache_key] = {'data': analysis, 'timestamp': time.time()}
             return analysis
         except Exception as e:
+            # Uncomment the line below if you still want to see error messages in the terminal
+            # print(f"Failed to fetch {ticker} data from {exchange}: {e}")
             continue  # Try the next exchange
     return None  # Return None if both exchanges fail
 
@@ -202,7 +204,7 @@ def update_stock_prices():
             update_data = []
             for row in update_values:
                 # Only updating the relevant columns while keeping the other columns None
-                update_data.append([None, None, None, None, row[0], None, row[6], None, row[7], None, row[8], None, row[9], None, row[10], None, None, None, None, None, None, None, None, row[11], row[1], row[2], None, None, row[5], None, None, None, row[3], row[4], row[21], None, None, row[12], row[13], None, None, None, None, None, row[14], None, None, None, None, row[15], row[16], None, None, None, None, row[17], row[18], None, None, None, None, row[19], row[20]])
+                update_data.append([None, None, None, None, row[0], None, row[6], None, row[7], None, row[8], None, row[9], None, row[10], None, None, None, None, None, None, None, row[11], row[1], row[2], None, None, row[5], None, None, None, row[3], row[4], row[21], None, None, row[12], row[13], None, None, None, None, None, row[14], None, None, None, None, row[15], row[16], None, None, None, None, row[17], row[18], None, None, None, None, row[19], row[20]])
 
             # Update the Google Sheet in one batch
             sheet.update(cell_range, update_data)
@@ -214,7 +216,7 @@ def update_stock_prices():
 
     print("All stock prices updated.")
 
-# Scheduler to automatically run updates at regular intervals
+# Remove the previous scheduler setup
 scheduler = BackgroundScheduler()
 
 # This variable indicates whether the update process is currently running
