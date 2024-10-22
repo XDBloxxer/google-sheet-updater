@@ -1,14 +1,10 @@
 import os
 import json
-from flask import Flask, jsonify
 import gspread
 from google.oauth2.service_account import Credentials
 from tradingview_ta import TA_Handler, Interval
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
-
-
-app = Flask(__name__)
 
 # Set up Google Sheets API credentials
 SCOPE = [
@@ -208,7 +204,7 @@ def update_stock_prices():
             update_data = []
             for row in update_values:
                 # Only updating the relevant columns while keeping the other columns None
-                update_data.append([None, None, None, None, row[0], None, row[6], None, row[7], None, row[8], None, row[9], None, row[10], None, None, None, None, None, None, None, row[11], row[1], row[2], None, None, row[5], None, None, None, row[3], row[4], row[21], None, None, row[12], row[13], None, None, None, None, None, row[14], None, None, None, None, row[15], row[16], None, None, None, None, row[17], row[18], None, None, None, None, row[19], row[20]])
+                update_data.append([None, None, None, None, row[0], None, row[6], None, row[7], None, row[8], None, row[9], None, row[10], None, None, None, None, None, None, None, None, row[11], row[1], row[2], None, None, row[5], None, None, None, row[3], row[4], row[21], None, None, row[12], row[13], None, None, None, None, None, row[14], None, None, None, None, row[15], row[16], None, None, None, None, row[17], row[18], None, None, None, None, row[19], row[20]])
 
             # Update the Google Sheet in one batch
             sheet.update(cell_range, update_data)
@@ -220,7 +216,7 @@ def update_stock_prices():
 
     print("All stock prices updated.")
 
-# Remove the previous scheduler setup
+# Scheduler to automatically run updates at regular intervals
 scheduler = BackgroundScheduler()
 
 # This variable indicates whether the update process is currently running
@@ -240,13 +236,3 @@ def update_stock_prices_and_schedule():
 
 # Start the first job immediately
 update_stock_prices_and_schedule()
-
-
-# Flask route to manually trigger stock price updates (if needed)
-@app.route('/update_stock_prices')
-def trigger_update_stock_prices():
-    update_stock_prices()
-    return jsonify({"message": "Stock prices updated manually."})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
