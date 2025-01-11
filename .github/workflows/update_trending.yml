@@ -2,7 +2,7 @@ name: Test Workflow
 on:
   workflow_dispatch:
 jobs:
-  test:
+  update:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Manual trigger test"
