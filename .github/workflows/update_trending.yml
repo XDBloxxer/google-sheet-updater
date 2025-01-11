@@ -3,6 +3,6 @@ on:
   workflow_dispatch:
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - run: echo "Manual trigger test"
