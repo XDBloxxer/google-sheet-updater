@@ -1,8 +1,0 @@
-name: Test Workflow
-on:
-  workflow_dispatch:
-jobs:
-  update:
-    runs-on: windows-latest
-    steps:
-      - run: echo "Manual trigger test"
