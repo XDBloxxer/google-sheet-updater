@@ -7,24 +7,7 @@ on:
   workflow_dispatch:  # Manually trigger the workflow
 
 jobs:
-  update-sheet:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install gspread google-auth requests
-
-      - name: Run update script
-        env:
-          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-        run: python stocktwits_to_sheets.py
+      - run: echo "Hello, World!"
