@@ -1,13 +1,8 @@
-name: Update Google Sheet with Stocktwits Trending Stocks
-
+name: Test Workflow
 on:
-  push:
-    branches:
-      - main  # Trigger when code is pushed to main branch
-  workflow_dispatch:  # Manually trigger the workflow
-
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Hello, World!"
+      - run: echo "Manual trigger test"
