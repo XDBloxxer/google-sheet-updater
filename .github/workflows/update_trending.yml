@@ -1,7 +1,30 @@
-name: Test Workflow
-on: push
+name: Update Google Sheet with Stocktwits Trending Stocks
+
+on:
+  push:
+    branches:
+      - main  # Trigger when code is pushed to main branch
+  workflow_dispatch:  # Manually trigger the workflow
+
 jobs:
-  test:
+  update-sheet:
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Hello, World!"
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install gspread google-auth requests
+
+      - name: Run update script
+        env:
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: python stocktwits_to_sheets.py
