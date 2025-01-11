@@ -1,4 +1,4 @@
-name: Google Sheet Updater
+name: Update Google Sheet with Stocktwits Trending Stocks
 
 on:
   push:
