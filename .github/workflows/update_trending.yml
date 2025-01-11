@@ -1,9 +1,10 @@
-name: Update Google Sheet with Stocktwits Trending Stocks
+name: Google Sheet Updater
 
 on:
-  schedule:
-    - cron: "0 * * * *" # Runs every hour
-  workflow_dispatch: # Allows manual trigger
+  push:
+    branches:
+      - main  # Trigger when code is pushed to main branch
+  workflow_dispatch:  # Manually trigger the workflow
 
 jobs:
   update-sheet:
