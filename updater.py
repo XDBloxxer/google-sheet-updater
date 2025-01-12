@@ -181,8 +181,12 @@ async def process_ticker(analyzer: StockAnalyzer, ticker: str) -> List:
 async def update_stock_prices_async(sheet, tickers: List[str], batch_size: int = 200):
     analyzer = StockAnalyzer()
     
+    # Iterate through tickers in batches of `batch_size`
     for i in range(0, len(tickers), batch_size):
         batch_tickers = tickers[i:i + batch_size]
+        print(f"Processing batch {i // batch_size + 1}: Tickers {i + 1} to {i + len(batch_tickers)}")
+        
+        # Create tasks for the current batch
         tasks = [process_ticker(analyzer, ticker) for ticker in batch_tickers]
         
         # Process tickers concurrently with controlled concurrency
@@ -192,14 +196,19 @@ async def update_stock_prices_async(sheet, tickers: List[str], batch_size: int =
             batch_results = await asyncio.gather(*batch_tasks)
             results.extend(batch_results)
         
-        # Update Google Sheet
-        cell_range = f'A{i + 3}:BJ{i + 2 + len(results)}'
+        # Determine the cell range to update based on the batch index
+        start_row = i + 3  # Assuming data starts at row 3
+        end_row = start_row + len(results) - 1
+        cell_range = f'A{start_row}:BJ{end_row}'  # Adjust "BJ" as per your actual column range
+        
+        # Update the sheet with results for the current batch
         sheet.update(cell_range, results)
         
-        print(f"Updated stocks from {i + 1} to {i + len(batch_tickers)}")
+        print(f"Updated batch {i // batch_size + 1}: Rows {start_row} to {end_row}")
         
         # Add a delay between batches to avoid rate limiting
         await asyncio.sleep(60)
+
 
 def update_stock_prices():
     # Get the sheet and tickers
