@@ -213,13 +213,14 @@ def update_stock_prices():
 
 def update_stock_prices_and_schedule():
     global is_updating
-    if not is_updating:
-        is_updating = True
-        try:
-            update_stock_prices()
-        finally:
-            is_updating = False
-    update_stock_prices_and_schedule()
+    while True:
+        if not is_updating:
+            is_updating = True
+            try:
+                update_stock_prices()
+            finally:
+                is_updating = False
+        time.sleep(1)  # Add a small delay to prevent CPU hogging
 
 if __name__ == "__main__":
     is_updating = False
