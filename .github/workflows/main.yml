@@ -30,6 +30,7 @@ jobs:
           pip install tradingview-ta
           pip install APScheduler
           pip install Flask
+          pip install aiohttp
 
       - name: Run the updater script
         env:
