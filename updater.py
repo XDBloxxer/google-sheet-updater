@@ -9,7 +9,47 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 
-# [Previous SCOPE and settings code remains the same]
+# Existing credential setup code
+SCOPE = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
+]
+
+# Connection pool settings
+MAX_CONNECTIONS = 100
+CONCURRENT_REQUESTS = 20
+RATE_LIMIT = 50  # requests per second
+
+class RateLimiter:
+    def __init__(self, rate_limit):
+        self.rate_limit = rate_limit
+        self.tokens = rate_limit
+        self.last_update = time.time()
+        self.lock = asyncio.Lock()
+    
+    async def acquire(self):
+        async with self.lock:
+            now = time.time()
+            time_passed = now - self.last_update
+            self.tokens = min(self.rate_limit, self.tokens + time_passed * self.rate_limit)
+            self.last_update = now
+            
+            if self.tokens < 1:
+                wait_time = (1 - self.tokens) / self.rate_limit
+                await asyncio.sleep(wait_time)
+                self.tokens = 0
+            else:
+                self.tokens -= 1
+
+def handle_null_value(value):
+    if value is None or value == "null":
+        return "-"
+    try:
+        return round(float(value), 2)
+    except ValueError:
+        return value
 
 class StockAnalyzer:
     def __init__(self):
@@ -99,7 +139,28 @@ async def process_ticker(analyzer: StockAnalyzer, ticker: str) -> List:
 
             await asyncio.sleep(0.5)
 
-            # [Rest of the indicator fetching code remains the same]
+            # Get 1-hour indicators
+            ema_200_1h_analysis = await loop.run_in_executor(pool, analyzer.get_stock_analysis, ticker, Interval.INTERVAL_1_HOUR)
+            ema_200_1h = handle_null_value(ema_200_1h_analysis.indicators.get("EMA200", "null")) if ema_200_1h_analysis else "-"
+            williams_r1h = handle_null_value(ema_200_1h_analysis.indicators.get("W.R", "null")) if ema_200_1h_analysis else "-"
+            stochk1h = handle_null_value(ema_200_1h_analysis.indicators.get("Stoch.K", "null")) if ema_200_1h_analysis else "-"
+
+            await asyncio.sleep(0.5)
+
+            # Get 15-minute indicators
+            williams_r15m_analysis = await loop.run_in_executor(pool, analyzer.get_stock_analysis, ticker, Interval.INTERVAL_15_MINUTES)
+            williams_r15m = handle_null_value(williams_r15m_analysis.indicators.get("W.R", "null")) if williams_r15m_analysis else "-"
+            stochk15min = handle_null_value(williams_r15m_analysis.indicators.get("Stoch.K", "null")) if williams_r15m_analysis else "-"
+
+            await asyncio.sleep(0.5)
+
+            # Get weekly indicators
+            williams_r_week_analysis = await loop.run_in_executor(pool, analyzer.get_stock_analysis, ticker, Interval.INTERVAL_1_WEEK)
+            if williams_r_week_analysis:
+                williams_r_week = handle_null_value(williams_r_week_analysis.indicators.get("W.R", "null"))
+                stoch_rsi_fast_1week = handle_null_value(williams_r_week_analysis.indicators.get("Stoch.RSI.K", "null"))
+            else:
+                williams_r_week = stoch_rsi_fast_1week = "-"
 
             print(f"Successfully processed {ticker}")
             
@@ -117,4 +178,49 @@ async def process_ticker(analyzer: StockAnalyzer, ticker: str) -> List:
             # Return a row of "-" values in case of complete failure
             return [None] * 4 + ["-"] + [None] * 1 + ["-"] * 17  # Adjust the number of "-" based on your columns
 
-# [Rest of the code remains the same]
+async def update_stock_prices_async(sheet, tickers: List[str], batch_size: int = 200):
+    analyzer = StockAnalyzer()
+    
+    for i in range(0, len(tickers), batch_size):
+        batch_tickers = tickers[i:i + batch_size]
+        tasks = [process_ticker(analyzer, ticker) for ticker in batch_tickers]
+        
+        # Process tickers concurrently with controlled concurrency
+        results = []
+        for batch in range(0, len(tasks), CONCURRENT_REQUESTS):
+            batch_tasks = tasks[batch:batch + CONCURRENT_REQUESTS]
+            batch_results = await asyncio.gather(*batch_tasks)
+            results.extend(batch_results)
+        
+        # Update Google Sheet
+        cell_range = f'A{i + 3}:BJ{i + 2 + len(results)}'
+        sheet.update(cell_range, results)
+        
+        print(f"Updated stocks from {i + 1} to {i + len(batch_tickers)}")
+        
+        # Add a delay between batches to avoid rate limiting
+        await asyncio.sleep(60)
+
+def update_stock_prices():
+    # Get the sheet and tickers
+    creds = Credentials.from_service_account_info(json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON")), scopes=SCOPE)
+    client = gspread.authorize(creds)
+    sheet = client.open('Flux Capacitor').worksheet("Live Raw Data API + Scraping + GOOGLEFINANCE")
+    tickers = sheet.col_values(1)[2:]  # Starting from the 3rd row
+    
+    # Run the async update function
+    asyncio.run(update_stock_prices_async(sheet, tickers, batch_size=200))
+
+def update_stock_prices_and_schedule():
+    global is_updating
+    if not is_updating:
+        is_updating = True
+        try:
+            update_stock_prices()
+        finally:
+            is_updating = False
+    update_stock_prices_and_schedule()
+
+if __name__ == "__main__":
+    is_updating = False
+    update_stock_prices_and_schedule()
