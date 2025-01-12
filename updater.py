@@ -105,11 +105,19 @@ async def process_ticker(analyzer: StockAnalyzer, ticker: str) -> List:
         try:
             print(f"Processing {ticker}...")
             
+            # Initialize default row values with "-"
+            default_row = [None, None, None, None, "-", None, "-", None, "-", None, 
+                           "-", None, "-", None, "-", None, None, None, None, None, None, None,
+                           "-", "-", "-", None, None, "-", None, None, None, 
+                           "-", "-", "-", None, None, "-", "-", None, None, None, None, 
+                           None, None, None, None, None, "-", None, None, None, None, 
+                           "-", "-", None, None, None, None, "-", "-"]
+
             # Get EMA 200 with 5-minute interval
             ema_analysis = await loop.run_in_executor(pool, analyzer.get_stock_analysis, ticker, Interval.INTERVAL_5_MINUTES)
             ema_200_5min = handle_null_value(ema_analysis.indicators.get("EMA200", "null")) if ema_analysis else "-"
-
-            # Add small delay between requests for the same ticker
+            
+            # Add a small delay between requests for the same ticker
             await asyncio.sleep(0.5)
 
             # Get daily interval indicators
@@ -175,8 +183,9 @@ async def process_ticker(analyzer: StockAnalyzer, ticker: str) -> List:
                     
         except Exception as e:
             print(f"Error processing {ticker}: {str(e)}")
-            # Return a row of "-" values in case of complete failure
-            return [None] * 4 + ["-"] + [None] * 1 + ["-"] * 17  # Adjust the number of "-" based on your columns
+            # Return the default row of "-" values in case of complete failure
+            return default_row
+
 
 async def update_stock_prices_async(sheet, tickers: List[str], batch_size: int = 200):
     analyzer = StockAnalyzer()
