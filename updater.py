@@ -1,12 +1,15 @@
 import os
 import json
 import gspread
+import asyncio
+import aiohttp
 from google.oauth2.service_account import Credentials
 from tradingview_ta import TA_Handler, Interval
 import time
-from apscheduler.schedulers.background import BackgroundScheduler
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Optional
 
-# Set up Google Sheets API credentials
+# Existing credential setup code remains the same
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
@@ -14,225 +17,171 @@ SCOPE = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# Load the Google credentials from the environment variable
-GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
+# Connection pool settings
+MAX_CONNECTIONS = 100
+CONCURRENT_REQUESTS = 20
+RATE_LIMIT = 50  # requests per second
 
-if GOOGLE_CREDENTIALS_JSON is None:
-    raise ValueError("GOOGLE_CREDENTIALS_JSON environment variable is not set.")
-
-# Create credentials from the JSON string
-creds = Credentials.from_service_account_info(json.loads(GOOGLE_CREDENTIALS_JSON), scopes=SCOPE)
-
-# Authorize the Google Sheets client
-client = gspread.authorize(creds)
-
-# Open the Google Sheet
-SPREADSHEET_NAME = 'Flux Capacitor'
-sheet = client.open(SPREADSHEET_NAME).worksheet("Live Raw Data API + Scraping + GOOGLEFINANCE")
-
-# Cache for storing stock analysis results
-cache = {}
-
-# Function to get analysis from TradingView for NASDAQ or NYSE
-def get_stock_analysis(ticker, interval):
-    # Create a unique cache key based on ticker and interval
-    cache_key = f"{ticker}_{interval}"
-
-    # Check if the result is already cached
-    if cache_key in cache and (time.time() - cache[cache_key]['timestamp']) < 3600:  # Cache for 1 hour
-        return cache[cache_key]['data']
+class RateLimiter:
+    def __init__(self, rate_limit):
+        self.rate_limit = rate_limit
+        self.tokens = rate_limit
+        self.last_update = time.time()
+        self.lock = asyncio.Lock()
     
-    exchanges = ["NASDAQ", "NYSE", "AMEX"]
-    for exchange in exchanges:
-        try:
-            # Set up TradingView TA_Handler for the stock ticker and exchange
-            handler = TA_Handler(
-                symbol=ticker,
-                exchange=exchange,
-                screener="america",
-                interval=interval
-            )
-            analysis = handler.get_analysis()
-            # Cache the results uniquely by ticker and interval
-            cache[cache_key] = {'data': analysis, 'timestamp': time.time()}
-            return analysis
-        except Exception as e:
-            # Uncomment the line below if you still want to see error messages in the terminal
-            # print(f"Failed to fetch {ticker} data from {exchange}: {e}")
-            continue  # Try the next exchange
-    return None  # Return None if both exchanges fail
+    async def acquire(self):
+        async with self.lock:
+            now = time.time()
+            time_passed = now - self.last_update
+            self.tokens = min(self.rate_limit, self.tokens + time_passed * self.rate_limit)
+            self.last_update = now
+            
+            if self.tokens < 1:
+                wait_time = (1 - self.tokens) / self.rate_limit
+                await asyncio.sleep(wait_time)
+                self.tokens = 0
+            else:
+                self.tokens -= 1
 
-# Function to handle "null" values
 def handle_null_value(value):
     if value is None or value == "null":
         return "-"
     try:
-        # Round the value to two decimal places if it's a number
         return round(float(value), 2)
     except ValueError:
         return value
 
-def update_stock_prices():
-    # Read tickers from column A starting from row 3
-    tickers = sheet.col_values(1)[2:]  # Starting from the 3rd row
+class StockAnalyzer:
+    def __init__(self, session: aiohttp.ClientSession, rate_limiter: RateLimiter):
+        self.session = session
+        self.rate_limiter = rate_limiter
+        self.cache: Dict[str, Dict] = {}
+        
+    async def get_stock_analysis(self, ticker: str, interval: Interval) -> Optional[TA_Handler]:
+        cache_key = f"{ticker}_{interval}"
+        
+        if cache_key in self.cache and (time.time() - self.cache[cache_key]['timestamp']) < 3600:
+            return self.cache[cache_key]['data']
+        
+        await self.rate_limiter.acquire()
+        
+        exchanges = ["NASDAQ", "NYSE", "AMEX"]
+        for exchange in exchanges:
+            try:
+                handler = TA_Handler(
+                    symbol=ticker,
+                    exchange=exchange,
+                    screener="america",
+                    interval=interval,
+                    session=self.session
+                )
+                analysis = await asyncio.to_thread(handler.get_analysis)
+                self.cache[cache_key] = {'data': analysis, 'timestamp': time.time()}
+                return analysis
+            except Exception:
+                continue
+        return None
 
-    batch_size = 50 # Number of tickers to process at a time
-    total_tickers = len(tickers)
-    stock_data = []
+async def process_ticker(analyzer: StockAnalyzer, ticker: str) -> List:
+    # Get EMA 200 with 5-minute interval
+    ema_analysis = await analyzer.get_stock_analysis(ticker, Interval.INTERVAL_5_MINUTES)
+    ema_200_5min = handle_null_value(ema_analysis.indicators.get("EMA200", "null")) if ema_analysis else "-"
 
-    # Process tickers in batches
-    for i in range(0, total_tickers, batch_size):
-        batch_tickers = tickers[i:i + batch_size]
-        update_values = []  # List to hold updates for batch writing
+    # Get daily interval indicators
+    analysis = await analyzer.get_stock_analysis(ticker, Interval.INTERVAL_1_DAY)
+    if analysis:
+        stoch_rsi_fast = handle_null_value(analysis.indicators.get("Stoch.RSI.K", "null"))
+        macd_level = handle_null_value(analysis.indicators.get("MACD.macd", "null"))
+        macd_signal = handle_null_value(analysis.indicators.get("MACD.signal", "null"))
+        williams_r = handle_null_value(analysis.indicators.get("W.R", "null"))
+        bbpower = handle_null_value(analysis.indicators.get("BBPower", "null"))
+        ema_200_daily = handle_null_value(analysis.indicators.get("EMA200", "null"))
+        bb_upper = handle_null_value(analysis.indicators.get("BB.upper", "null"))
+        bb_lower = handle_null_value(analysis.indicators.get("BB.lower", "null"))
+        open_value = handle_null_value(analysis.indicators.get("open", "null"))
+        stochk = handle_null_value(analysis.indicators.get("Stoch.K", "null"))
+        mom = handle_null_value(analysis.indicators.get("Mom", "null"))
+    else:
+        stoch_rsi_fast = macd_level = macd_signal = williams_r = bbpower = ema_200_daily = bb_upper = bb_lower = open_value = stochk = mom = "-"
 
-        for idx, ticker in enumerate(batch_tickers, start=i + 3):  # Row 3 onward
-            # Get EMA 200 with 5-minute interval
-            ema_analysis = get_stock_analysis(ticker, Interval.INTERVAL_5_MINUTES)
-            if ema_analysis is not None:
-                ema_200_5min = handle_null_value(ema_analysis.indicators.get("EMA200", "null"))
-            else:
-                ema_200_5min = "-"
+    # Get 4-hour indicators
+    ema_200_4h_analysis = await analyzer.get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
+    ema_200_4h = handle_null_value(ema_200_4h_analysis.indicators.get("EMA200", "null")) if ema_200_4h_analysis else "-"
+    williams_r4h = handle_null_value(ema_200_4h_analysis.indicators.get("W.R", "null")) if ema_200_4h_analysis else "-"
+    stochk4h = handle_null_value(ema_200_4h_analysis.indicators.get("Stoch.K", "null")) if ema_200_4h_analysis else "-"
 
-            # Get other indicators with daily interval
-            analysis = get_stock_analysis(ticker, Interval.INTERVAL_1_DAY)
-            if analysis is not None:
-                stoch_rsi_fast = handle_null_value(analysis.indicators.get("Stoch.RSI.K", "null"))
-                macd_level = handle_null_value(analysis.indicators.get("MACD.macd", "null"))
-                macd_signal = handle_null_value(analysis.indicators.get("MACD.signal", "null"))
-                williams_r = handle_null_value(analysis.indicators.get("W.R", "null"))
-                bbpower = handle_null_value(analysis.indicators.get("BBPower", "null"))
-                ema_200_daily = handle_null_value(analysis.indicators.get("EMA200", "null"))
-                bb_upper = handle_null_value(analysis.indicators.get("BB.upper", "null"))
-                bb_lower = handle_null_value(analysis.indicators.get("BB.lower", "null"))
-                open_value = handle_null_value(analysis.indicators.get("open", "null"))
-                stochk = handle_null_value(analysis.indicators.get("Stoch.K", "null"))
-                mom = handle_null_value(analysis.indicators.get("Mom", "null"))
+    # Get 1-hour indicators
+    ema_200_1h_analysis = await analyzer.get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
+    ema_200_1h = handle_null_value(ema_200_1h_analysis.indicators.get("EMA200", "null")) if ema_200_1h_analysis else "-"
+    williams_r1h = handle_null_value(ema_200_1h_analysis.indicators.get("W.R", "null")) if ema_200_1h_analysis else "-"
+    stochk1h = handle_null_value(ema_200_1h_analysis.indicators.get("Stoch.K", "null")) if ema_200_1h_analysis else "-"
 
-            else:
-                stoch_rsi_fast = macd_level = macd_signal = williams_r = bbpower = ema_200_daily = bb_upper = bb_lower = open_value = stochk = mom = "-"
+    # Get 15-minute indicators
+    williams_r15m_analysis = await analyzer.get_stock_analysis(ticker, Interval.INTERVAL_15_MINUTES)
+    williams_r15m = handle_null_value(williams_r15m_analysis.indicators.get("W.R", "null")) if williams_r15m_analysis else "-"
+    stochk15min = handle_null_value(williams_r15m_analysis.indicators.get("Stoch.K", "null")) if williams_r15m_analysis else "-"
 
-            # Get EMA 200 with 4-hour and 1-hour intervals
-            ema_200_4h_analysis = get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
-            if ema_200_4h_analysis is not None:
-                ema_200_4h = handle_null_value(ema_200_4h_analysis.indicators.get("EMA200", "null"))
-            else:
-                ema_200_4h = "-"
+    # Get weekly indicators
+    williams_r_week_analysis = await analyzer.get_stock_analysis(ticker, Interval.INTERVAL_1_WEEK)
+    if williams_r_week_analysis:
+        williams_r_week = handle_null_value(williams_r_week_analysis.indicators.get("W.R", "null"))
+        stoch_rsi_fast_1week = handle_null_value(williams_r_week_analysis.indicators.get("Stoch.RSI.K", "null"))
+    else:
+        williams_r_week = stoch_rsi_fast_1week = "-"
 
-            williams_r4hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
-            if williams_r4hanalysis is not None:
-                williams_r4h = handle_null_value(williams_r4hanalysis.indicators.get("W.R", "null"))
-            else:
-                williams_r4h = "-"
+    # Return the values in the exact same order as the original code
+    return [None, None, None, None, ema_200_5min, None, ema_200_daily, None, ema_200_4h, None, 
+            ema_200_1h, None, bb_upper, None, bb_lower, None, None, None, None, None, None, None,
+            open_value, stoch_rsi_fast, williams_r, None, None, bbpower, None, None, None, 
+            macd_level, macd_signal, mom, None, None, williams_r_week, stoch_rsi_fast_1week,
+            None, None, None, None, None, stochk, None, None, None, None, williams_r4h,
+            stochk4h, None, None, None, None, williams_r1h, stochk1h, None, None, None, None,
+            williams_r15m, stochk15min]
 
-            stochk4hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_4_HOURS)
-            if stochk4hanalysis is not None:
-                stochk4h = handle_null_value(stochk4hanalysis.indicators.get("Stoch.K", "null"))
-            else:
-                stochk4h = "-"
-
-            ema_200_1h_analysis = get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
-            if ema_200_1h_analysis is not None:
-                ema_200_1h = handle_null_value(ema_200_1h_analysis.indicators.get("EMA200", "null"))
-            else:
-                ema_200_1h = "-"
+async def update_stock_prices_async(sheet, tickers: List[str], batch_size: int = 200):
+    connector = aiohttp.TCPConnector(limit=MAX_CONNECTIONS)
+    rate_limiter = RateLimiter(RATE_LIMIT)
+    
+    async with aiohttp.ClientSession(connector=connector) as session:
+        analyzer = StockAnalyzer(session, rate_limiter)
+        
+        for i in range(0, len(tickers), batch_size):
+            batch_tickers = tickers[i:i + batch_size]
+            tasks = [process_ticker(analyzer, ticker) for ticker in batch_tickers]
             
-            williams_r1hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
-            if williams_r1hanalysis is not None:
-                williams_r1h = handle_null_value(williams_r1hanalysis.indicators.get("W.R", "null"))
-            else:
-                williams_r1h = "-"
+            # Process tickers concurrently with controlled concurrency
+            results = []
+            for batch in range(0, len(tasks), CONCURRENT_REQUESTS):
+                batch_tasks = tasks[batch:batch + CONCURRENT_REQUESTS]
+                batch_results = await asyncio.gather(*batch_tasks)
+                results.extend(batch_results)
+            
+            # Update Google Sheet
+            cell_range = f'A{i + 3}:BJ{i + 2 + len(results)}'
+            sheet.update(cell_range, results)
+            
+            print(f"Updated stocks from {i + 1} to {i + len(batch_tickers)}")
 
-            stochk1hanalysis = get_stock_analysis(ticker, Interval.INTERVAL_1_HOUR)
-            if stochk1hanalysis is not None:
-                stochk1h = handle_null_value(stochk1hanalysis.indicators.get("Stoch.K", "null"))
-            else:
-                stochk1h = "-"
-
-            williams_r15manalysis = get_stock_analysis(ticker, Interval.INTERVAL_15_MINUTES)
-            if williams_r15manalysis is not None:
-                williams_r15m = handle_null_value(williams_r15manalysis.indicators.get("W.R", "null"))
-            else:
-                williams_r15m = "-"
-
-            stochk15minanalysis = get_stock_analysis(ticker, Interval.INTERVAL_15_MINUTES)
-            if stochk15minanalysis is not None:
-                stochk15min = handle_null_value(stochk15minanalysis.indicators.get("Stoch.K", "null"))
-            else:
-                stochk15min = "-"
-
-            # Get Williams and Stoch RSI with 1-week interval
-            williams_r_week_analysis = get_stock_analysis(ticker, Interval.INTERVAL_1_WEEK)
-            if williams_r_week_analysis is not None:
-                williams_r_week = handle_null_value(williams_r_week_analysis.indicators.get("W.R", "null"))
-                stoch_rsi_fast_1week = handle_null_value(williams_r_week_analysis.indicators.get("Stoch.RSI.K", "null"))
-            else:
-                williams_r_week = stoch_rsi_fast_1week = "-"
-
-            # Save the results to the list (for API response)
-            stock_data.append({
-                "ticker": ticker,
-                "ema_200_5min": ema_200_5min,
-                "stoch_rsi_fast": stoch_rsi_fast,
-                "macd_level": macd_level,
-                "macd_signal": macd_signal,
-                "williams_r": williams_r,
-                "bbpower": bbpower,
-                "ema_200_daily": ema_200_daily,
-                "ema_200_4h": ema_200_4h,
-                "ema_200_1h": ema_200_1h,
-                "bb_upper": bb_upper,
-                "bb_lower": bb_lower,
-                "open_value": open_value,
-                "williams_r_week": williams_r_week,
-                "stoch_rsi_fast_1week": stoch_rsi_fast_1week,
-                "stochk": stochk,
-                "williams_r4h": williams_r4h,
-                "stochk4h": stochk4h,
-                "williams_r1h": williams_r1h,
-                "stochk1h": stochk1h,
-                "williams_r15m": williams_r15m,
-                "stochk15min": stochk15min,
-                "mom": mom
-            })
-
-            # Prepare the update values for batch update
-            update_values.append([ema_200_5min, stoch_rsi_fast, williams_r, macd_level, macd_signal, bbpower, ema_200_daily, ema_200_4h, ema_200_1h, bb_upper, bb_lower, open_value, williams_r_week, stoch_rsi_fast_1week, stochk, williams_r4h, stochk4h, williams_r1h, stochk1h, williams_r15m, stochk15min, mom])
-
-        # Update Google Sheet in batch
-        if update_values:
-            cell_range = f'A{i + 3}:BJ{i + 2 + len(update_values)}'  # Adjust based on columns used
-            update_data = []
-            for row in update_values:
-                # Only updating the relevant columns while keeping the other columns None
-                update_data.append([None, None, None, None, row[0], None, row[6], None, row[7], None, row[8], None, row[9], None, row[10], None, None, None, None, None, None, None, row[11], row[1], row[2], None, None, row[5], None, None, None, row[3], row[4], row[21], None, None, row[12], row[13], None, None, None, None, None, row[14], None, None, None, None, row[15], row[16], None, None, None, None, row[17], row[18], None, None, None, None, row[19], row[20]])
-
-            # Update the Google Sheet in one batch
-            sheet.update(cell_range, update_data)
-
-        print(f"Updated stocks from {i + 1} to {i + len(batch_tickers)}.")
-
-        # Wait for a bit before processing the next batch
-        time.sleep(60)  # Wait for 50 seconds between batches
-
-    print("All stock prices updated.")
-
-# Remove the previous scheduler setup
-scheduler = BackgroundScheduler()
-
-# This variable indicates whether the update process is currently running
-is_updating = False
+def update_stock_prices():
+    # Get the sheet and tickers
+    creds = Credentials.from_service_account_info(json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON")), scopes=SCOPE)
+    client = gspread.authorize(creds)
+    sheet = client.open('Flux Capacitor').worksheet("Live Raw Data API + Scraping + GOOGLEFINANCE")
+    tickers = sheet.col_values(1)[2:]  # Starting from the 3rd row
+    
+    # Run the async update function
+    asyncio.run(update_stock_prices_async(sheet, tickers, batch_size=200))
 
 def update_stock_prices_and_schedule():
     global is_updating
-    if not is_updating:  # Check if we are not already updating
+    if not is_updating:
         is_updating = True
         try:
-            update_stock_prices()  # Call the function to update stock prices
+            update_stock_prices()
         finally:
-            is_updating = False  # Reset the flag after completion
+            is_updating = False
+    update_stock_prices_and_schedule()
 
-    # After all stocks are updated, start over
-    update_stock_prices_and_schedule()  # Call again to start the next update
-
-# Start the first job immediately
-update_stock_prices_and_schedule()
+if __name__ == "__main__":
+    is_updating = False
+    update_stock_prices_and_schedule()
